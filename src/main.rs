@@ -45,6 +45,10 @@ impl StationResult {
     }
 }
 
+fn round(num: f32) -> f32 {
+    (num * 10.0).ceil() / 10.0
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let filename = if args.len() > 1 {
@@ -91,7 +95,7 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
     let mut position = 0;
     loop {
         let slice = &slice[position..];
-        let next_line_pos = slice.iter().position(|c| *c == b'\n');
+        let next_line_pos = find_line_pos(slice);
         if next_line_pos.is_none() {
             break;
         }
@@ -99,9 +103,12 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
         if next_line_pos >= slice_length {
             break;
         }
+
         let line = &slice[..next_line_pos];
         position += next_line_pos + 1;
-        let semi_pos = line.iter().position(|c| *c == b';').unwrap();
+
+        let semi_pos = find_semi_pos(line);
+
         let (name, temp) = line.split_at(semi_pos);
         let temp = std::str::from_utf8(&temp[1..]).unwrap();
         let temp = temp.parse::<f32>().unwrap();
@@ -111,6 +118,13 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
     }
 
     results
+}
+
+fn find_line_pos(slice: &[u8]) -> Option<usize> {
+    slice.iter().position(|c| *c == b'\n')
+}
+fn find_semi_pos(line: &[u8]) -> usize {
+    line.iter().position(|c| *c == b';').unwrap()
 }
 
 unsafe extern "C" {
@@ -175,5 +189,39 @@ impl std::ops::Deref for Mmap {
 
     fn deref(&self) -> &Self::Target {
         unsafe { slice::from_raw_parts(self.ptr, self.len) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_finds_semicolons() {
+        assert_eq!(find_semi_pos(b"Triangulation;-123.3\n"), 13);
+    }
+    #[test]
+    fn it_finds_newlines() {
+        assert_eq!(find_line_pos(b"Triangulation;-123.3\n"), Some(20));
+    }
+    #[test]
+    fn it_aggregates_properly() {
+        let mut station: StationResult = StationResult::default();
+        station.add_reading(-100.1);
+        station.add_reading(100.1);
+
+        assert_eq!(station.min, -100.1);
+        assert_eq!(station.max, 100.1);
+        assert_eq!(station.avg(), 0.0);
+    }
+    #[test]
+    fn it_aggregates_properly_and_rounds() {
+        let mut station: StationResult = StationResult::default();
+        station.add_reading(-5.0);
+        station.add_reading(10.05);
+
+        assert_eq!(station.min, -5.0);
+        assert_eq!(station.max, 10.05);
+        assert_eq!(station.avg(), 2.525);
     }
 }
