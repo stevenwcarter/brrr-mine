@@ -12,7 +12,7 @@ use hashbrown::HashMap;
 // Johannesburg;40.6
 // Napoli;29.9
 
-use std::{fs::File, os::fd::AsRawFd, ptr, slice};
+use std::{env, fs::File, os::fd::AsRawFd, ptr, slice};
 
 const PROT_READ: i32 = 0x1;
 const MAP_PRIVATE: i32 = 0x02;
@@ -46,7 +46,14 @@ impl StationResult {
 }
 
 fn main() -> Result<()> {
-    let mmap = Mmap::new()?;
+    let args: Vec<String> = env::args().collect();
+    let filename = if args.len() > 1 {
+        args[1].as_str()
+    } else {
+        "measurements.txt"
+    };
+
+    let mmap = Mmap::new(filename)?;
 
     let slice: &[u8] = &mmap;
 
@@ -124,8 +131,8 @@ struct Mmap {
 }
 
 impl Mmap {
-    pub fn new() -> Result<Self> {
-        let file = File::open("measurements.txt.big")?;
+    pub fn new(filename: &str) -> Result<Self> {
+        let file = File::open(filename)?;
         let len = file.metadata()?.len() as usize;
         let fd = file.as_raw_fd();
 
