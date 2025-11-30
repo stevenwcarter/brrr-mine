@@ -1,5 +1,6 @@
 use anyhow::Result;
 use hashbrown::HashMap;
+use memchr::memchr;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use std::{
@@ -41,7 +42,8 @@ fn main() -> Result<()> {
 
         let end = position + chunk_size;
         let end = if end < len {
-            position + chunk_size + find_line_pos(&slice[end..]).unwrap()
+            // position + chunk_size + find_line_pos(&slice[end..]).unwrap()
+            position + chunk_size + memchr(b'\n', &slice[end..]).unwrap()
         } else {
             len - 1
         };
@@ -137,7 +139,7 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
     let mut position = 0;
     loop {
         let slice = &slice[position..];
-        let next_line_pos = find_line_pos(slice);
+        let next_line_pos = memchr(b'\n', slice);
         if next_line_pos.is_none() {
             break;
         }
@@ -159,28 +161,19 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
 }
 
 fn get_name_and_temp(line: &[u8]) -> (&[u8], f32) {
-    let semi_pos = find_semi_pos(line);
-    let (name, temp) = line.split_at(semi_pos);
-    let temp = std::str::from_utf8(&temp[1..]).unwrap();
-    let temp = fast_float::parse(temp).expect("failed to parse");
-    (name, temp)
+    let semi_pos = memchr(b';', line).unwrap();
+    // let semi_pos = find_semi_pos(line);
+    let temp = fast_float::parse(&line[semi_pos + 1..]).expect("failed to parse");
+    (&line[..semi_pos], temp)
 }
 
 fn find_line_pos(slice: &[u8]) -> Option<usize> {
     slice.iter().position(|c| *c == b'\n')
 }
-fn find_semi_pos(line: &[u8]) -> usize {
-    line.iter().position(|c| *c == b';').unwrap()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn it_finds_semicolons() {
-        assert_eq!(find_semi_pos(b"Triangulation;-123.3\n"), 13);
-    }
     #[test]
     fn it_finds_newlines() {
         assert_eq!(find_line_pos(b"Triangulation;-123.3\n"), Some(20));
