@@ -162,7 +162,7 @@ fn get_name_and_temp(line: &[u8]) -> (&[u8], f32) {
     let semi_pos = find_semi_pos(line);
     let (name, temp) = line.split_at(semi_pos);
     let temp = std::str::from_utf8(&temp[1..]).unwrap();
-    let temp = temp.parse::<f32>().unwrap();
+    let temp = fast_float::parse(temp).expect("failed to parse");
     (name, temp)
 }
 
