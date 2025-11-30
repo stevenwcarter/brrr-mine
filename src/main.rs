@@ -40,20 +40,11 @@ fn main() -> Result<()> {
         let len = slice.len();
 
         let end = position + chunk_size;
-        dbg!(end);
         let end = if end < len {
-            let end = find_line_pos(&slice[end..]);
-            dbg!(end);
-            if let Some(pos) = end {
-                position + chunk_size + pos
-            } else {
-                len
-            }
+            position + chunk_size + find_line_pos(&slice[end..]).unwrap()
         } else {
             len
         };
-        dbg!(end);
-        println!();
 
         let slice = &slice[position..end];
         position = end + 1;
