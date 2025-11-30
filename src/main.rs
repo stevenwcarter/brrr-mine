@@ -1,8 +1,10 @@
 use anyhow::Result;
 use hashbrown::HashMap;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use std::{
     env,
+    ops::Range,
     sync::mpsc,
     thread::available_parallelism,
     time::{Duration, Instant},
@@ -33,21 +35,28 @@ fn main() -> Result<()> {
     let mut position = 0;
     let total_len = slice.len();
     let chunk_size = total_len / nthreads;
-    (0..nthreads).for_each(|_| {
-        let tx = tx.clone();
-        let time_tx = time_tx.clone();
-        let start = Instant::now();
+
+    let calculate_range = |_| {
         let len = slice.len();
 
         let end = position + chunk_size;
         let end = if end < len {
             position + chunk_size + find_line_pos(&slice[end..]).unwrap()
         } else {
-            len
+            len - 1
         };
-
-        let slice = &slice[position..end];
+        let our_position = position;
         position = end + 1;
+
+        our_position..end
+    };
+
+    (0..nthreads).map(calculate_range).for_each(|range| {
+        let tx = tx.clone();
+        let time_tx = time_tx.clone();
+        let start = Instant::now();
+
+        let slice = &slice[range.clone()];
 
         std::thread::spawn(move || {
             let result = one(slice);
@@ -56,7 +65,6 @@ fn main() -> Result<()> {
             drop(tx);
         });
     });
-    eprintln!("Spawn time: {:?}", start.elapsed());
 
     drop(tx);
     drop(time_tx);
@@ -141,17 +149,21 @@ fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
         let line = &slice[..next_line_pos];
         position += next_line_pos + 1;
 
-        let semi_pos = find_semi_pos(line);
-
-        let (name, temp) = line.split_at(semi_pos);
-        let temp = std::str::from_utf8(&temp[1..]).unwrap();
-        let temp = temp.parse::<f32>().unwrap();
+        let (name, temp) = get_name_and_temp(line);
 
         let result: &mut StationResult = results.entry(name).or_default();
         result.add_reading(temp);
     }
 
     results
+}
+
+fn get_name_and_temp(line: &[u8]) -> (&[u8], f32) {
+    let semi_pos = find_semi_pos(line);
+    let (name, temp) = line.split_at(semi_pos);
+    let temp = std::str::from_utf8(&temp[1..]).unwrap();
+    let temp = temp.parse::<f32>().unwrap();
+    (name, temp)
 }
 
 fn find_line_pos(slice: &[u8]) -> Option<usize> {
