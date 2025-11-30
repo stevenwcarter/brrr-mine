@@ -87,6 +87,8 @@ fn main() -> Result<()> {
 
     aggregate(aggregated);
 
+    eprintln!("Total execution time: {:?}", start.elapsed());
+
     Ok(())
 }
 
