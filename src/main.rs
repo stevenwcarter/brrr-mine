@@ -1,11 +1,9 @@
 use anyhow::Result;
 use hashbrown::HashMap;
 use memchr::memchr;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use std::{
     env,
-    ops::Range,
     sync::mpsc,
     thread::available_parallelism,
     time::{Duration, Instant},
@@ -71,7 +69,7 @@ fn main() -> Result<()> {
     drop(tx);
     drop(time_tx);
 
-    let mut aggregated: HashMap<&[u8], StationResult> = HashMap::new();
+    let mut aggregated: HashMap<&[u8], StationResult> = HashMap::with_capacity(415);
     let mut duration: Duration = Duration::new(0, 0);
     while let Ok(data) = rx.recv() {
         let start = Instant::now();
@@ -133,7 +131,7 @@ fn aggregate(data: HashMap<&[u8], StationResult>) {
 }
 
 fn one(slice: &[u8]) -> HashMap<&[u8], StationResult> {
-    let mut results = HashMap::new();
+    let mut results = HashMap::with_capacity(415);
 
     let slice_length = slice.len();
     let mut position = 0;
@@ -167,17 +165,45 @@ fn get_name_and_temp(line: &[u8]) -> (&[u8], f32) {
     (&line[..semi_pos], temp)
 }
 
-fn find_line_pos(slice: &[u8]) -> Option<usize> {
-    slice.iter().position(|c| *c == b'\n')
-}
 #[cfg(test)]
 mod tests {
+    use std::hash::{Hash, Hasher};
+
     use super::*;
 
-    #[test]
-    fn it_finds_newlines() {
-        assert_eq!(find_line_pos(b"Triangulation;-123.3\n"), Some(20));
+    pub fn count_collisions(keys: &[&[u8]]) -> usize {
+        // 1. Calculate the hash for every key
+        let hasher = ahash::AHasher::default();
+        let mut hashes: Vec<u64> = keys
+            .iter()
+            .map(|key| {
+                let mut hasher = hasher.clone();
+                key.hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect();
+
+        // 2. Sort the hashes (sort_unstable is faster for u64)
+        hashes.sort_unstable();
+
+        // 3. Count total before deduplication
+        let total_len = hashes.len();
+
+        // 4. Remove duplicates
+        hashes.dedup();
+
+        // 5. Calculate collisions
+        total_len - hashes.len()
     }
+
+    #[test]
+    #[ignore]
+    fn it_has_few_collisions() {
+        let cities = include_str!("../cities.txt");
+        let cities: Vec<&[u8]> = cities.lines().map(|e| e.as_bytes()).collect();
+        assert!(dbg!(count_collisions(&cities)) < 10);
+    }
+
     #[test]
     fn it_aggregates_properly() {
         let mut station: StationResult = StationResult::default();
